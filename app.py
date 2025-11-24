@@ -356,9 +356,9 @@ with tab1:
         with col1:
             fecha = st.date_input("📅 Fecha límite", min_value=date.today())
         with col2:
-            importancia = st.selectbox("⭐ Importancia", ["🟢 Baja", "🟡 Media", "🔴 Alta"])
+            importancia = st.selectbox(" Importancia", ["🟢 Baja", "🟡 Media", "🔴 Alta"])
 
-        submit = st.form_submit_button("✨ Crear Tarea", use_container_width=True)
+        submit = st.form_submit_button(" Crear Tarea", use_container_width=True)
 
         if submit:
             if titulo.strip() == "":
@@ -428,7 +428,7 @@ with tab2:
                 # Info de estado
                 with col2:
                     st.write(f"📅 **Fecha límite:** {tarea['fecha']}")
-                    st.markdown(f"⭐ **Importancia:** {get_badge_html(tarea['importancia'])}", unsafe_allow_html=True)
+                    st.markdown(f" **Importancia:** {get_badge_html(tarea['importancia'])}", unsafe_allow_html=True)
                     estado_emoji = "✅" if tarea['completada'] else "⏳"
                     estado_texto = "Completada" if tarea['completada'] else "Pendiente"
                     st.write(f"{estado_emoji} **Estado:** {estado_texto}")
@@ -471,7 +471,7 @@ with tab2:
 # ===================================
 
 with tab3:
-    st.header("📊 Estadísticas y Análisis")
+    st.header(" Estadísticas y Análisis")
 
     tareas = cargar_tareas()
     total = len(tareas)
@@ -480,10 +480,10 @@ with tab3:
 
     # KPIs principales
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("📝 Total", total)
-    col2.metric("✅ Completadas", completadas)
-    col3.metric("⏳ Pendientes", pendientes)
-    col4.metric("🎯 Avance", f"{int((completadas/total)*100) if total>0 else 0}%")
+    col1.metric(" Total", total)
+    col2.metric(" Completadas", completadas)
+    col3.metric(" Pendientes", pendientes)
+    col4.metric(" Avance", f"{int((completadas/total)*100) if total>0 else 0}%")
 
     st.divider()
 
@@ -521,7 +521,7 @@ with tab3:
             st.altair_chart(chart_estado, use_container_width=True)
         
         with col_viz2:
-            st.subheader("🎯 Distribución por Importancia")
+            st.subheader(" Distribución por Importancia")
             
             # Gráfico circular - Importancia
             importancia_count = {}
@@ -576,10 +576,10 @@ with tab3:
         st.altair_chart(chart_timeline, use_container_width=True)
         
     else:
-        st.info("📭 No hay datos suficientes para mostrar estadísticas. ¡Crea tu primera tarea!")
+        st.info(" No hay datos suficientes para mostrar estadísticas. ¡Crea tu primera tarea!")
 
 with tab4:  
-    st.header("🖥️ Conexión desde Instancia EC2 - Prueba B")
+    st.header(" Conexión desde Instancia EC2 - Prueba B")
     st.markdown("**Aquí podemos poner información sobre la conexión desde la instancia EC2.**")
 
 # ===================================
@@ -587,31 +587,23 @@ with tab4:
 # ===================================
 
 with st.sidebar:
-    st.header("🔌 Conexión con AWS S3")
+    st.header(" Conexión con AWS S3")
 
-    if st.button("🔍 Probar conexión S3", use_container_width=True):
+    if st.button(" Probar conexión S3", use_container_width=True):
         r = probar_conexion()
         if r is True:
-            st.success("✅ Conectado correctamente a S3")
+            st.success(" Conectado correctamente a S3")
         else:
-            st.error(f"❌ Error: {r}")
+            st.error(f" Error: {r}")
 
-    st.divider()
-    
-    st.info("**🚀 Características:**\n\n"
-            "✅ S3 como base de datos\n"
-            "✅ Sin IAM Keys necesarias\n"
-            "✅ Compatible con EC2\n"
-            "✅ Visualizaciones interactivas\n"
-            "✅ Tema oscuro profesional")
     
     st.divider()
     
     tareas = cargar_tareas()
     if tareas:
-        st.metric("📊 Total de tareas", len(tareas))
-        st.metric("🔥 Tareas activas", sum(1 for t in tareas if not t["completada"]))
+        st.metric("Total de tareas", len(tareas))
+        st.metric("Tareas activas", sum(1 for t in tareas if not t["completada"]))
     
     st.divider()
-    st.caption("🎓 Universidad Autónoma de Occidente")
-    st.caption("💻 Proyecto AWS 2025")
+    st.caption(" Universidad Autónoma de Occidente")
+    st.caption(" Proyecto AWS 2025")
