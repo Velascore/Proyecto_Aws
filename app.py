@@ -5,6 +5,81 @@ import json
 import uuid
 import altair as alt
 import pandas as pd
+import mysql.connector
+
+# ============================
+#  CONFIGURACIÓN MYSQL (RDS)
+# ============================
+
+MYSQL_HOST = "proyectoaws-db.ckiyq9fa3mxc.us-east-1.rds.amazonaws.com"
+MYSQL_USER = "admin"
+MYSQL_PASS = "Camilo9408"
+MYSQL_DB   = "proyectoaws"
+
+
+def get_mysql_conn():
+    return mysql.connector.connect(
+        host=MYSQL_HOST,
+        user=MYSQL_USER,
+        password=MYSQL_PASS,
+        database=MYSQL_DB
+    )
+
+
+def cargar_tareas_mysql():
+    """Lee las tareas desde la tabla tareas en RDS MySQL."""
+    conn = get_mysql_conn()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM tareas ORDER BY creada DESC")
+    tareas = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return tareas
+
+
+def guardar_tarea_mysql(tarea):
+    """Inserta una tarea nueva en MySQL."""
+    conn = get_mysql_conn()
+    cursor = conn.cursor()
+
+    query = """
+    INSERT INTO tareas (id, titulo, descripcion, fecha, importancia, completada, creada)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """
+
+    cursor.execute(query, (
+        tarea['id'],
+        tarea['titulo'],
+        tarea['descripcion'],
+        tarea['fecha'],      # date
+        tarea['importancia'],
+        tarea['completada'],
+        tarea['creada']      # datetime
+    ))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def actualizar_estado_mysql(tarea_id, estado):
+    """Actualiza el estado completada de una tarea en MySQL."""
+    conn = get_mysql_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE tareas SET completada=%s WHERE id=%s", (estado, tarea_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def eliminar_tarea_mysql(tarea_id):
+    """Elimina una tarea de MySQL por id."""
+    conn = get_mysql_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM tareas WHERE id=%s", (tarea_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
 
 
 # ============================
@@ -187,7 +262,7 @@ st.markdown("""
     /* Logo UAO */
     .logo-container {
         position: fixed;
-        top: 100cdpx;
+        top: 100px;
         right: 40px;
         z-index: 999;
         background: rgba(0, 24, 51, 0.8);
@@ -206,20 +281,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================
-#  CONFIGURAR S3
+#  CONFIGURAR S3 (BACKUP)
 # ============================
 
-BUCKET = "proyecto-aws-camilo"     
+BUCKET = "proyecto-aws-camilo"
 ARCHIVO = "tareas.json"
 
 s3 = boto3.client("s3", region_name="us-east-1")
 
 
-# ----------------------------
-# Funciones para S3
-# ----------------------------
-
-def cargar_tareas():
+def cargar_tareas_s3():
     """Lee las tareas desde el archivo JSON en S3."""
     try:
         obj = s3.get_object(Bucket=BUCKET, Key=ARCHIVO)
@@ -232,13 +303,13 @@ def cargar_tareas():
         return []
 
 
-def guardar_tareas(tareas):
+def guardar_tareas_s3(tareas):
     """Guarda la lista de tareas en S3 en formato JSON."""
     try:
         s3.put_object(
             Bucket=BUCKET,
             Key=ARCHIVO,
-            Body=json.dumps(tareas),
+            Body=json.dumps(tareas, default=str),
             ContentType="application/json"
         )
     except Exception as e:
@@ -272,11 +343,8 @@ def get_badge_html(importancia):
 #  HEADER PRINCIPAL
 # ============================
 
-# Logo UAO
-
 URL_LOGO_UAO = "https://upload.wikimedia.org/wikipedia/commons/4/45/Logo-uao.png"
-# --- Logo ---
-# Código simplificado para mostrar el logo usando la URL directa
+
 st.markdown(f"""
     <div class="logo-container">
         <img src="{URL_LOGO_UAO}" alt="Logo UAO">
@@ -286,15 +354,17 @@ st.markdown(f"""
 st.markdown('<h1> Sistema de Gestión de Tareas UAO</h1>', unsafe_allow_html=True)
 st.markdown('<h2 style="color: white;"> Proyecto Final AWS </h2>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle"> Camilo Velasco, Bradley Campo, Santiago Barriga, Manuel Luna</p>', unsafe_allow_html=True)
+
 # ============================
 #  TABS PRINCIPALES
 # ============================
 
-tab0,tab1, tab2, tab3,tab4 = st.tabs(["Descipcion proyecto","➕ Nueva Tarea", "📋 Todas las Tareas", "📊 Estadísticas"," 🖥️ Conexion instancia EC2 B"])
-
+tab0, tab1, tab2, tab3, tab4 = st.tabs(
+    ["Descipcion proyecto", "➕ Nueva Tarea", "📋 Todas las Tareas", "📊 Estadísticas", " 🖥️ Conexion instancia EC2 B"]
+)
 
 # ===================================
-# TAB 0 – Crear nueva tarea
+# TAB 0 – Descripción del proyecto
 # ===================================
 
 with tab0:
@@ -302,17 +372,21 @@ with tab0:
     st.markdown("""
 **Sistema de Gestión de Tareas en AWS**
 
-Este proyecto es una aplicación web desarrollada con **Python y Streamlit**, desplegada en una instancia **Amazon EC2 (t3.micro)**. Toda la información se almacena de manera persistente en un **archivo JSON alojado en un bucket de Amazon S3**.
+Este proyecto es una aplicación web desarrollada con **Python y Streamlit**, desplegada en una instancia **Amazon EC2 (t3.micro)**.
 
-La arquitectura utiliza un **Rol de IAM (LabRole)**, el cual permite que la instancia EC2 acceda a  al Bucket de S3 
+Actualmente, las tareas se almacenan de manera persistente en una **base de datos MySQL gestionada por Amazon RDS**, ubicada en subred privada dentro de la VPC del proyecto.  
+Adicionalmente, se implementa un **mecanismo de respaldo en Amazon S3**, donde se guarda un archivo `tareas.json` con una copia de las tareas.
+
+La arquitectura utiliza un **Rol de IAM (LabRole)**, el cual permite que la instancia EC2 acceda al Bucket de S3 para respaldos.
 
 ### **Funciones principales de la aplicación:**
 - Crear nuevas tareas.
 - Listarlas y gestionarlas.
-- Marcar tareas como completadas.
+- Marcar tareas como completadas / pendientes.
 - Eliminar tareas con confirmación.
 - Mostrar estadísticas y gráficas del uso.
-- Persistencia de datos en S3 usando JSON.
+- Persistencia de datos en **Amazon RDS (MySQL)**.
+- Respaldo opcional de datos en **Amazon S3 (JSON)**.
 
 ### **Componentes del despliegue:**
 
@@ -320,28 +394,36 @@ La arquitectura utiliza un **Rol de IAM (LabRole)**, el cual permite que la inst
    - Ubuntu Server  
    - Tipo de instancia: *t3.micro*  
    - Ejecutando `app.py` (Streamlit) en el puerto **8501/TCP**  
-   - Entorno virtual (venv) configurado
+   - Entorno virtual (venv) configurado  
+   - Rol de IAM asociado (LabRole)
+
+• **Amazon RDS (MySQL)**
+   - Endpoint privado dentro de la VPC  
+   - Base de datos: `proyectoaws`  
+   - Tabla principal: `tareas`  
 
 • **IAM Role: LabRole**
    - Permite acceso a S3 
-   - Incluye permisos como: - `AmazonS3FullAccess`   - `AmazonEC2ReadOnlyAccess`  
-     
-    
+   - Permite a la EC2 consultar otros servicios AWS según política asociada
+
 • **Amazon S3**
    - Bucket: `proyecto-aws-camilo`  
-   - Almacenamiento del archivo JSON: `tareas.json`  
+   - Archivo de respaldo: `tareas.json`  
 
 • **Security Group**
    - SSH → 22/TCP  
    - Streamlit → **8501/TCP**  
-   - HTTP/HTTPS 
+   - HTTP/HTTPS, según configuración del ALB (si aplica)
    - **ICMP** habilitado para diagnóstico de red
-
 """)
-                
 
+    st.info(
+        "Este proyecto muestra una arquitectura típica de aplicación web en AWS, "
+        "con una capa de presentación en EC2 (Streamlit), una base de datos relacional en RDS, "
+        "y almacenamiento de objetos en S3 para respaldo."
+    )
 
-    st.info("Este proyecto es un sistema de gestión de tareas desarrollado en Streamlit, desplegado en una instancia EC2, y utilizando servicios como S3, DynamoDB, y Lambda.")# ===================================
+# ===================================
 # TAB 1 – Crear nueva tarea
 # ===================================
 
@@ -362,23 +444,20 @@ with tab1:
 
         if submit:
             if titulo.strip() == "":
-                st.error("❌ El título es obligatorio")
+                st.error(" El título es obligatorio")
             else:
-                tareas = cargar_tareas()
                 nueva = {
                     "id": str(uuid.uuid4()),
                     "titulo": titulo,
                     "descripcion": descripcion,
-                    "fecha": str(fecha),
+                    "fecha": fecha,               # date object
                     "importancia": importancia,
                     "completada": False,
-                    "creada": datetime.now().isoformat()
+                    "creada": datetime.now()      # datetime object
                 }
-                tareas.append(nueva)
-                guardar_tareas(tareas)
-                st.success("✅ Tarea creada correctamente")
+                guardar_tarea_mysql(nueva)
+                st.success(" Tarea creada correctamente")
                 st.rerun()
-
 
 # ===================================
 # TAB 2 – Listar tareas
@@ -387,7 +466,7 @@ with tab1:
 with tab2:
     st.header("Tareas Registradas")
 
-    tareas = cargar_tareas()
+    tareas = cargar_tareas_mysql()
     
     # Filtros
     col_f1, col_f2 = st.columns(2)
@@ -399,6 +478,10 @@ with tab2:
     # Aplicar filtros
     tareas_filtradas = tareas.copy()
     
+    # Convertir completada a bool por seguridad
+    for t in tareas_filtradas:
+        t["completada"] = bool(t["completada"])
+
     if filtro_estado == "Pendientes":
         tareas_filtradas = [t for t in tareas_filtradas if not t["completada"]]
     elif filtro_estado == "Completadas":
@@ -413,21 +496,25 @@ with tab2:
         st.info("📭 No hay tareas que coincidan con los filtros.")
     else:
         for tarea in tareas_filtradas:
-            container_class = "task-completed" if tarea["completada"] else ""
-            
             with st.container():
                 col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
 
                 # Información de la tarea
                 with col1:
-                    estado = f"~~{tarea['titulo']}~~" if tarea["completada"] else tarea["titulo"]
+                    if tarea["completada"]:
+                        estado = f"~~{tarea['titulo']}~~"
+                    else:
+                        estado = tarea["titulo"]
+
                     st.subheader(estado)
                     if tarea["descripcion"]:
                         st.write(tarea["descripcion"])
 
                 # Info de estado
                 with col2:
-                    st.write(f"📅 **Fecha límite:** {tarea['fecha']}")
+                    # fecha viene como date
+                    fecha_str = tarea["fecha"].strftime("%Y-%m-%d") if isinstance(tarea["fecha"], (datetime, date)) else str(tarea["fecha"])
+                    st.write(f"📅 **Fecha límite:** {fecha_str}")
                     st.markdown(f" **Importancia:** {get_badge_html(tarea['importancia'])}", unsafe_allow_html=True)
                     estado_emoji = "✅" if tarea['completada'] else "⏳"
                     estado_texto = "Completada" if tarea['completada'] else "Pendiente"
@@ -437,8 +524,8 @@ with tab2:
                 with col3:
                     boton_texto = "↩️" if tarea["completada"] else "✅"
                     if st.button(boton_texto, key=f"comp_{tarea['id']}", help="Cambiar estado"):
-                        tarea["completada"] = not tarea["completada"]
-                        guardar_tareas(tareas)
+                        nuevo_estado = not tarea["completada"]
+                        actualizar_estado_mysql(tarea["id"], nuevo_estado)
                         st.rerun()
 
                 # Eliminar con confirmación
@@ -454,8 +541,7 @@ with tab2:
                         col_si, col_no = st.columns(2)
                         with col_si:
                             if st.button("✓", key=f"conf_si_{tarea['id']}", help="Confirmar"):
-                                tareas = [t for t in tareas if t["id"] != tarea["id"]]
-                                guardar_tareas(tareas)
+                                eliminar_tarea_mysql(tarea["id"])
                                 del st.session_state[f"confirm_delete_{tarea['id']}"]
                                 st.rerun()
                         with col_no:
@@ -465,7 +551,6 @@ with tab2:
 
                 st.divider()
 
-
 # ===================================
 # TAB 3 – Estadísticas
 # ===================================
@@ -473,7 +558,11 @@ with tab2:
 with tab3:
     st.header(" Estadísticas y Análisis")
 
-    tareas = cargar_tareas()
+    tareas = cargar_tareas_mysql()
+    # asegurar bool
+    for t in tareas:
+        t["completada"] = bool(t["completada"])
+
     total = len(tareas)
     completadas = sum(1 for t in tareas if t["completada"])
     pendientes = total - completadas
@@ -578,16 +667,20 @@ with tab3:
     else:
         st.info(" No hay datos suficientes para mostrar estadísticas. ¡Crea tu primera tarea!")
 
+# ===================================
+# TAB 4 – Conexión EC2 B (placeholder)
+# ===================================
+
 with tab4:  
     st.header(" Conexión desde Instancia EC2 - Prueba B")
-    st.markdown("**Aquí podemos poner información sobre la conexión desde la instancia EC2.**")
+    st.markdown("**Aquí podemos poner información sobre la conexión desde la instancia EC2 secundaria o pruebas adicionales.**")
 
 # ===================================
 # SIDEBAR
 # ===================================
 
 with st.sidebar:
-    st.header(" Conexión con AWS S3")
+    st.header(" Conexión y Respaldo AWS")
 
     if st.button(" Probar conexión S3", use_container_width=True):
         r = probar_conexion()
@@ -596,13 +689,51 @@ with st.sidebar:
         else:
             st.error(f" Error: {r}")
 
-    
     st.divider()
-    
-    tareas = cargar_tareas()
-    if tareas:
-        st.metric("Total de tareas", len(tareas))
-        st.metric("Tareas activas", sum(1 for t in tareas if not t["completada"]))
+
+    # Botones de backup / restore entre MySQL y S3
+    st.subheader(" Respaldo de Tareas")
+
+    if st.button("Respaldar tareas en S3", use_container_width=True):
+        tareas_mysql = cargar_tareas_mysql()
+        guardar_tareas_s3(tareas_mysql)
+        st.success("Respaldo guardado en S3 correctamente")
+
+    if st.button("Restaurar desde S3 a MySQL", use_container_width=True):
+        tareas_s3 = cargar_tareas_s3()
+        if tareas_s3:
+            for t in tareas_s3:
+                try:
+                    # Normalizar campos
+                    tarea_restore = {
+                        "id": t.get("id", str(uuid.uuid4())),
+                        "titulo": t.get("titulo", "Sin título"),
+                        "descripcion": t.get("descripcion", ""),
+                        "fecha": datetime.fromisoformat(t["fecha"]).date() if isinstance(t.get("fecha"), str) else date.today(),
+                        "importancia": t.get("importancia", "🟢 Baja"),
+                        "completada": bool(t.get("completada", False)),
+                        "creada": datetime.fromisoformat(t["creada"]) if isinstance(t.get("creada"), str) else datetime.now()
+                    }
+                    guardar_tarea_mysql(tarea_restore)
+                except Exception as e:
+                    st.error(f"Error restaurando una tarea: {e}")
+            st.success("Tareas restauradas desde S3 hacia MySQL")
+        else:
+            st.info("No se encontraron tareas en S3 para restaurar.")
+
+    st.divider()
+
+    # Métricas rápidas desde MySQL
+    tareas_sidebar = cargar_tareas_mysql()
+    for t in tareas_sidebar:
+        t["completada"] = bool(t["completada"])
+
+    if tareas_sidebar:
+        st.metric("Total de tareas", len(tareas_sidebar))
+        st.metric("Tareas activas", sum(1 for t in tareas_sidebar if not t["completada"]))
+    else:
+        st.metric("Total de tareas", 0)
+        st.metric("Tareas activas", 0)
     
     st.divider()
     st.caption(" Universidad Autónoma de Occidente")
